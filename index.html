@@ -291,6 +291,7 @@
     <div class="range-display">
       <div class="range-label">Phạm vi hiện tại</div>
       <div class="range-numbers"><span id="user-min">1</span> — <span id="user-max">100</span></div>
+      <div id="taken-info" style="font-size: 0.85rem; color: #bbb; margin-top: 8px;">Đang tải thông tin số...</div>
     </div>
 
     <!-- DEADLINE BANNER -->
@@ -352,6 +353,14 @@
     </div>
 
     <button class="btn" id="btn-toggle-lock" style="background: linear-gradient(135deg, #e67e22, #d35400); color: #fff; margin-top: 10px;" onclick="adminToggleLock()">🔒 Đóng cổng ngay bây giờ</button>
+
+    <div style="margin: 15px 0 5px; padding: 12px 14px; background: rgba(255,255,255,0.06); border-radius: 12px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.1);">
+      <div>
+        <div style="font-weight: bold; font-size: 0.9rem; color: #ffd200;">🛡️ Giới hạn 1 IP = 1 lượt</div>
+        <div style="font-size: 0.75rem; color: #aaa;">Chặn 1 máy đổi tên chọn nhiều lần</div>
+      </div>
+      <button class="btn" id="btn-toggle-ip" style="width: auto; padding: 6px 14px; margin: 0; font-size: 0.85rem;" onclick="adminToggleIpLimit()">ĐANG BẬT</button>
+    </div>
 
     <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
 
@@ -418,6 +427,7 @@
     let currentDeadline = null;
     let currentIsLocked = false;
     let currentIsExpired = false;
+    let currentLimitByIp = true;
     let hasUserPicked = false;
     let seenSpinId = null;
     let isFirstLoad = true;
@@ -436,11 +446,23 @@
       document.getElementById('user-number').max = data.max;
       document.getElementById('user-number').placeholder = `Nhập số từ ${data.min} đến ${data.max}`;
 
+      if (data.takenNumbers) {
+        const takenCount = data.takenNumbers.length;
+        const totalNumbers = data.max - data.min + 1;
+        const freeCount = Math.max(0, totalNumbers - takenCount);
+        const countEl = document.getElementById('taken-info');
+        if (countEl) {
+          countEl.innerHTML = `Đã có: <b style="color:#ffd200;">${takenCount}</b>/${totalNumbers} số được chọn (Còn trống: <b style="color:#2ecc71;">${freeCount}</b>)`;
+        }
+      }
+
       currentDeadline = data.deadline ? new Date(data.deadline) : null;
       currentIsLocked = !!data.isLocked;
       currentIsExpired = !!data.isExpired;
+      currentLimitByIp = data.limitByIp !== false;
 
       updateLockBtnUI();
+      updateIpLimitBtnUI();
       updateDeadlineUI();
 
       // Handle Latest Admin Spin
@@ -629,6 +651,36 @@
       }
     }
 
+    function updateIpLimitBtnUI() {
+      const btn = document.getElementById('btn-toggle-ip');
+      if (btn) {
+        if (currentLimitByIp) {
+          btn.textContent = 'ĐANG BẬT';
+          btn.style.background = '#27ae60';
+        } else {
+          btn.textContent = 'ĐÃ TẮT';
+          btn.style.background = '#7f8c8d';
+        }
+      }
+    }
+
+    async function adminToggleIpLimit() {
+      const password = document.getElementById('admin-pass').value;
+      if (!password) { showToast('Nhập mật khẩu admin!', 'error'); return; }
+
+      const nextState = !currentLimitByIp;
+      const res = await fetch('/api/admin/ip-limit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, limitByIp: nextState })
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error, 'error'); return; }
+      currentLimitByIp = data.limitByIp;
+      updateIpLimitBtnUI();
+      showToast(nextState ? 'Đã BẬT giới hạn 1 IP = 1 lượt!' : 'Đã TẮT giới hạn IP (cho phép chung Wi-Fi)!');
+    }
+
     // ===== LOAD HISTORY =====
     async function loadHistory() {
       const res = await fetch('/api/history');
@@ -698,13 +750,20 @@
       const data = await res.json();
       if (!res.ok) {
         showToast(data.error, 'error');
+        if (data.numberTaken) {
+          const numInput = document.getElementById('user-number');
+          numInput.value = '';
+          numInput.focus();
+          numInput.style.borderColor = '#e74c3c';
+          setTimeout(() => { numInput.style.borderColor = 'rgba(255,255,255,0.2)'; }, 2500);
+        }
         return;
       }
 
       animateResult('user-result', 'user-result-num', data.number, () => {
         document.getElementById('user-result-label').textContent = `${data.pickedBy} đã chọn`;
         showToast(`Đã chọn số ${data.number}!`);
-        lockUserControls(data.pickedBy);
+        lockUserControls(data.pickedBy, data.number);
         loadHistory();
       });
     }
@@ -734,14 +793,16 @@
       animateResult('user-result', 'user-result-num', data.number, () => {
         document.getElementById('user-result-label').textContent = `${data.pickedBy} đã random`;
         showToast(`Random ra số ${data.number}!`);
-        lockUserControls(data.pickedBy);
+        lockUserControls(data.pickedBy, data.number);
         loadHistory();
       });
     }
 
     // ===== LOCK CONTROLS AFTER PICK =====
-    function lockUserControls(name) {
+    function lockUserControls(name, number) {
       hasUserPicked = true;
+      if (name) localStorage.setItem('my_picked_user', name);
+      if (number) localStorage.setItem('my_picked_number', number);
       document.getElementById('btn-pick').disabled = true;
       document.getElementById('btn-random').disabled = true;
       document.getElementById('user-name').disabled = true;
@@ -870,6 +931,13 @@
       const data = await res.json();
       if (!res.ok) {
         showToast(data.error, 'error');
+        if (data.numberTaken) {
+          const numInput = document.getElementById('user-number');
+          numInput.value = '';
+          numInput.focus();
+          numInput.style.borderColor = '#e74c3c';
+          setTimeout(() => { numInput.style.borderColor = 'rgba(255,255,255,0.2)'; }, 2500);
+        }
         return;
       }
 
@@ -880,6 +948,8 @@
 
     function unlockUserControls() {
       hasUserPicked = false;
+      localStorage.removeItem('my_picked_user');
+      localStorage.removeItem('my_picked_number');
       document.getElementById('btn-pick').disabled = false;
       document.getElementById('btn-random').disabled = false;
       document.getElementById('user-name').disabled = false;
@@ -894,6 +964,19 @@
     }
 
     // ===== INIT =====
+    const savedName = localStorage.getItem('my_picked_user');
+    const savedNum = localStorage.getItem('my_picked_number');
+    if (savedName) {
+      document.getElementById('user-name').value = savedName;
+      if (savedNum) {
+        document.getElementById('user-number').value = savedNum;
+        document.getElementById('user-result-num').textContent = savedNum;
+        document.getElementById('user-result-label').textContent = `${savedName} đã chọn`;
+        document.getElementById('user-result').classList.add('show');
+      }
+      lockUserControls(savedName, savedNum);
+    }
+
     loadRange();
     loadHistory();
     // Smooth countdown every 1s
