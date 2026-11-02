@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎲 Random Picker</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .header {
+      text-align: center;
+      padding: 30px 20px 10px;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      background: linear-gradient(90deg, #f7971e, #ffd200);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header p { color: #aaa; margin-top: 5px; }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .tab-btn {
+      padding: 12px 30px;
+      border: 2px solid #ffd200;
+      border-radius: 30px;
+      background: transparent;
+      color: #ffd200;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .tab-btn.active, .tab-btn:hover {
+      background: #ffd200;
+      color: #0f0c29;
+      font-weight: bold;
+    }
+
+    .panel {
+      display: none;
+      background: rgba(255,255,255,0.07);
+      backdrop-filter: blur(10px);
+      border-radius: 20px;
+      padding: 30px;
+      width: 90%;
+      max-width: 500px;
+      margin-bottom: 20px;
+    }
+
+    .panel.active { display: block; }
+
+    .panel h2 {
+      font-size: 1.4rem;
+      margin-bottom: 20px;
+      text-align: center;
+      color: #ffd200;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #ccc;
+      font-size: 0.9rem;
+    }
+
+    .form-group input {
+      width: 100%;
+      padding: 12px 15px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+      font-size: 1rem;
+      outline: none;
+      transition: border 0.3s;
+    }
+
+    .form-group input:focus {
+      border-color: #ffd200;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #f7971e, #ffd200);
+      color: #0f0c29;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(255, 210, 0, 0.4);
+    }
+
+    .btn-secondary {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+    }
+
+    .btn-secondary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(118, 75, 162, 0.4);
+    }
+
+    .range-display {
+      text-align: center;
+      padding: 20px;
+      background: rgba(255,210,0,0.1);
+      border-radius: 15px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255,210,0,0.2);
+    }
+
+    .range-display .range-numbers {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #ffd200;
+    }
+
+    .range-display .range-label {
+      color: #aaa;
+      font-size: 0.85rem;
+      margin-top: 5px;
+    }
+
+    .result-box {
+      text-align: center;
+      padding: 30px;
+      margin: 20px 0;
+      border-radius: 15px;
+      background: rgba(255,255,255,0.05);
+      display: none;
+    }
+
+    .result-box.show { display: block; }
+
+    .result-number {
+      font-size: 5rem;
+      font-weight: 900;
+      background: linear-gradient(135deg, #f7971e, #ffd200);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: popIn 0.5s ease;
+    }
+
+    @keyframes popIn {
+      0% { transform: scale(0.3); opacity: 0; }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    @keyframes spin {
+      0% { transform: rotateY(0deg); }
+      100% { transform: rotateY(360deg); }
+    }
+
+    .spinning .result-number {
+      animation: spin 0.1s linear infinite;
+    }
+
+    .result-label { color: #aaa; margin-top: 5px; }
+
+    .history-section {
+      width: 90%;
+      max-width: 500px;
+      margin-bottom: 30px;
+    }
+
+    .history-section h3 {
+      color: #ffd200;
+      margin-bottom: 10px;
+      text-align: center;
+    }
+
+    .history-list {
+      max-height: 250px;
+      overflow-y: auto;
+      border-radius: 15px;
+      background: rgba(255,255,255,0.05);
+    }
+
+    .history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .history-item:last-child { border-bottom: none; }
+
+    .history-num {
+      font-size: 1.4rem;
+      font-weight: bold;
+      color: #ffd200;
+      min-width: 50px;
+    }
+
+    .history-who { color: #ccc; font-size: 0.9rem; }
+    .history-time { color: #777; font-size: 0.75rem; }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px 25px;
+      border-radius: 10px;
+      font-weight: bold;
+      z-index: 999;
+      animation: slideIn 0.3s ease;
+      display: none;
+    }
+
+    .toast.success { background: #27ae60; color: #fff; display: block; }
+    .toast.error { background: #e74c3c; color: #fff; display: block; }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .or-divider {
+      text-align: center;
+      color: #666;
+      margin: 15px 0 5px;
+      font-size: 0.9rem;
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,210,0,0.3); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>🎲 Random Picker</h1>
+    <p>Chọn số ngẫu nhiên trong phạm vi</p>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('user')">👤 Người chơi</button>
+    <button class="tab-btn" onclick="switchTab('admin')">🔐 Admin</button>
+  </div>
+
+  <!-- USER PANEL -->
+  <div class="panel active" id="panel-user">
+    <h2>👤 Chọn số của bạn</h2>
+
+    <div class="range-display">
+      <div class="range-label">Phạm vi hiện tại</div>
+      <div class="range-numbers"><span id="user-min">1</span> — <span id="user-max">100</span></div>
+    </div>
+
+    <div class="form-group">
+      <label>Tên của bạn <span style="color:#e74c3c">*</span></label>
+      <input type="text" id="user-name" placeholder="Bắt buộc nhập tên..." required>
+    </div>
+
+    <div class="form-group">
+      <label>Chọn một số trong phạm vi</label>
+      <input type="number" id="user-number" placeholder="Nhập số...">
+    </div>
+
+    <button class="btn btn-primary" id="btn-pick" onclick="userPick()">✅ Chọn số này</button>
+
+    <div class="or-divider">— hoặc —</div>
+
+    <button class="btn btn-secondary" id="btn-random" onclick="userRandom()">🎰 Random ngẫu nhiên</button>
+
+    <div class="result-box" id="user-result">
+      <div class="result-number" id="user-result-num">0</div>
+      <div class="result-label" id="user-result-label">Số của bạn</div>
+    </div>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div class="panel" id="panel-admin">
+    <h2>🔐 Quản trị viên</h2>
+
+    <div class="form-group">
+      <label>Mật khẩu Admin</label>
+      <input type="password" id="admin-pass" placeholder="Nhập mật khẩu...">
+    </div>
+
+    <div class="form-group">
+      <label>Số nhỏ nhất (Min)</label>
+      <input type="number" id="admin-min" placeholder="VD: 1">
+    </div>
+
+    <div class="form-group">
+      <label>Số lớn nhất (Max)</label>
+      <input type="number" id="admin-max" placeholder="VD: 100">
+    </div>
+
+    <button class="btn btn-primary" onclick="adminSetRange()">📏 Cập nhật phạm vi</button>
+
+    <div class="or-divider">— hoặc —</div>
+
+    <button class="btn btn-secondary" onclick="adminRandom()">🎰 Admin Random</button>
+
+    <div class="result-box" id="admin-result">
+      <div class="result-number" id="admin-result-num">0</div>
+      <div class="result-label">Kết quả Admin</div>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="history-section">
+    <h3>📜 Lịch sử chọn số</h3>
+    <div class="history-list" id="history-list">
+      <div class="history-item" style="text-align:center;color:#777;">Chưa có lượt chọn nào</div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ===== TAB SWITCHING =====
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach((b, i) => {
+        b.classList.toggle('active', (tab === 'user' && i === 0) || (tab === 'admin' && i === 1));
+      });
+      document.getElementById('panel-user').classList.toggle('active', tab === 'user');
+      document.getElementById('panel-admin').classList.toggle('active', tab === 'admin');
+    }
+
+    // ===== TOAST =====
+    function showToast(msg, type = 'success') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + type;
+      setTimeout(() => { t.className = 'toast'; }, 3000);
+    }
+
+    // ===== LOAD RANGE =====
+    async function loadRange() {
+      const res = await fetch('/api/range');
+      const data = await res.json();
+      document.getElementById('user-min').textContent = data.min;
+      document.getElementById('user-max').textContent = data.max;
+      document.getElementById('admin-min').value = data.min;
+      document.getElementById('admin-max').value = data.max;
+      document.getElementById('user-number').min = data.min;
+      document.getElementById('user-number').max = data.max;
+      document.getElementById('user-number').placeholder = `Nhập số từ ${data.min} đến ${data.max}`;
+    }
+
+    // ===== LOAD HISTORY =====
+    async function loadHistory() {
+      const res = await fetch('/api/history');
+      const data = await res.json();
+      const list = document.getElementById('history-list');
+      if (data.length === 0) {
+        list.innerHTML = '<div class="history-item" style="text-align:center;color:#777;">Chưa có lượt chọn nào</div>';
+        return;
+      }
+      list.innerHTML = data.map(item => {
+        const time = new Date(item.timestamp).toLocaleTimeString('vi-VN');
+        return `
+          <div class="history-item">
+            <span class="history-num">${item.number}</span>
+            <span class="history-who">${item.pickedBy}</span>
+            <span class="history-time">${time}</span>
+          </div>`;
+      }).join('');
+    }
+
+    // ===== SPINNING ANIMATION =====
+    function animateResult(elementId, numElementId, finalNumber, callback) {
+      const box = document.getElementById(elementId);
+      const numEl = document.getElementById(numElementId);
+      box.classList.add('show', 'spinning');
+
+      let count = 0;
+      const min = parseInt(document.getElementById('user-min').textContent);
+      const max = parseInt(document.getElementById('user-max').textContent);
+      const interval = setInterval(() => {
+        numEl.textContent = Math.floor(Math.random() * (max - min + 1)) + min;
+        count++;
+        if (count > 15) {
+          clearInterval(interval);
+          box.classList.remove('spinning');
+          numEl.textContent = finalNumber;
+          numEl.style.animation = 'none';
+          void numEl.offsetWidth; // trigger reflow
+          numEl.style.animation = 'popIn 0.5s ease';
+          if (callback) callback();
+        }
+      }, 80);
+    }
+
+    // ===== USER: PICK NUMBER =====
+    async function userPick() {
+      const name = document.getElementById('user-name').value.trim();
+      const number = parseInt(document.getElementById('user-number').value);
+
+      if (!name) {
+        showToast('Vui lòng nhập tên của bạn!', 'error');
+        document.getElementById('user-name').focus();
+        return;
+      }
+      if (isNaN(number)) {
+        showToast('Vui lòng nhập một số!', 'error');
+        return;
+      }
+
+      const res = await fetch('/api/pick', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number, name })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error, 'error');
+        return;
+      }
+
+      animateResult('user-result', 'user-result-num', data.number, () => {
+        document.getElementById('user-result-label').textContent = `${data.pickedBy} đã chọn`;
+        showToast(`Đã chọn số ${data.number}!`);
+        lockUserControls(data.pickedBy);
+        loadHistory();
+      });
+    }
+
+    // ===== USER: RANDOM =====
+    async function userRandom() {
+      const name = document.getElementById('user-name').value.trim();
+
+      if (!name) {
+        showToast('Vui lòng nhập tên của bạn!', 'error');
+        document.getElementById('user-name').focus();
+        return;
+      }
+
+      const res = await fetch('/api/random', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error, 'error');
+        return;
+      }
+
+      animateResult('user-result', 'user-result-num', data.number, () => {
+        document.getElementById('user-result-label').textContent = `${data.pickedBy} đã random`;
+        showToast(`Random ra số ${data.number}!`);
+        lockUserControls(data.pickedBy);
+        loadHistory();
+      });
+    }
+
+    // ===== LOCK CONTROLS AFTER PICK =====
+    function lockUserControls(name) {
+      document.getElementById('btn-pick').disabled = true;
+      document.getElementById('btn-random').disabled = true;
+      document.getElementById('user-name').disabled = true;
+      document.getElementById('user-number').disabled = true;
+      document.getElementById('btn-pick').textContent = '🔒 Đã chọn';
+      document.getElementById('btn-random').textContent = '🔒 Đã chọn';
+      document.getElementById('btn-pick').style.opacity = '0.5';
+      document.getElementById('btn-random').style.opacity = '0.5';
+      document.getElementById('btn-pick').style.cursor = 'not-allowed';
+      document.getElementById('btn-random').style.cursor = 'not-allowed';
+    }
+
+    // ===== ADMIN: SET RANGE =====
+    async function adminSetRange() {
+      const password = document.getElementById('admin-pass').value;
+      const min = parseInt(document.getElementById('admin-min').value);
+      const max = parseInt(document.getElementById('admin-max').value);
+
+      if (!password) { showToast('Nhập mật khẩu admin!', 'error'); return; }
+      if (isNaN(min) || isNaN(max)) { showToast('Nhập min và max!', 'error'); return; }
+
+      const res = await fetch('/api/admin/range', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ min, max, password })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error, 'error');
+        return;
+      }
+
+      showToast(`Đã cập nhật: ${data.min} — ${data.max}`);
+      loadRange();
+      loadHistory();
+    }
+
+    // ===== ADMIN: RANDOM =====
+    async function adminRandom() {
+      const password = document.getElementById('admin-pass').value;
+      if (!password) { showToast('Nhập mật khẩu admin!', 'error'); return; }
+
+      const res = await fetch('/api/admin/random', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error, 'error');
+        return;
+      }
+
+      animateResult('admin-result', 'admin-result-num', data.number, () => {
+        showToast(`Admin random ra số ${data.number}!`);
+        loadHistory();
+      });
+    }
+
+    // ===== INIT =====
+    loadRange();
+    loadHistory();
+    // Auto refresh every 5s
+    setInterval(() => { loadRange(); loadHistory(); }, 5000);
+  </script>
+</body>
+</html>
