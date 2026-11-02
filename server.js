@@ -1,10 +1,27 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+// Serve static from both 'public' folder and root
 app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(__dirname));
+
+// Explicit route for homepage
+app.get('/', (req, res) => {
+  const publicPath = path.join(__dirname, 'public', 'index.html');
+  const rootPath = path.join(__dirname, 'index.html');
+
+  if (fs.existsSync(publicPath)) {
+    return res.sendFile(publicPath);
+  } else if (fs.existsSync(rootPath)) {
+    return res.sendFile(rootPath);
+  } else {
+    res.status(404).send('<h2>⚠️ Chưa tìm thấy file index.html!</h2><p>Hãy đảm bảo bạn đã tải file <code>index.html</code> lên repository GitHub.</p>');
+  }
+});
 
 // In-memory state
 let state = {
