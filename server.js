@@ -32,6 +32,7 @@ let state = {
   pickedNames: new Set(),    // track names that already picked
   deadline: null,            // ISO string e.g. "2026-11-02T20:30"
   isLocked: false,           // boolean manual lock
+  latestAdminSpin: null,     // { id, number, startedAt, durationMs }
 };
 
 function checkIsExpired() {
@@ -48,6 +49,7 @@ app.get('/api/range', (req, res) => {
     deadline: state.deadline,
     isLocked: state.isLocked,
     isExpired: checkIsExpired(),
+    latestAdminSpin: state.latestAdminSpin,
     serverTime: new Date().toISOString()
   });
 });
@@ -92,6 +94,7 @@ app.post('/api/admin/reset', (req, res) => {
   }
   state.history = [];
   state.pickedNames.clear();
+  state.latestAdminSpin = null;
   res.json({ success: true, message: 'Đã xóa toàn bộ lịch sử! Mọi người có thể chọn lại.' });
 });
 
@@ -102,8 +105,17 @@ app.post('/api/admin/random', (req, res) => {
     return res.status(403).json({ error: 'Sai mật khẩu admin!' });
   }
   const num = Math.floor(Math.random() * (state.max - state.min + 1)) + state.min;
+  
+  // Save latest admin spin with 4s animation duration
+  state.latestAdminSpin = {
+    id: Date.now(),
+    number: num,
+    startedAt: Date.now(),
+    durationMs: 4000
+  };
+
   state.history.push({ number: num, pickedBy: 'Admin', timestamp: new Date().toISOString() });
-  res.json({ number: num });
+  res.json({ number: num, latestAdminSpin: state.latestAdminSpin });
 });
 
 // User: pick a specific number

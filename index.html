@@ -272,6 +272,13 @@
     <p>Chọn số ngẫu nhiên trong phạm vi</p>
   </div>
 
+  <!-- LATEST WINNING NUMBER BANNER -->
+  <div id="latest-spin-banner" style="display:none; width: 90%; max-width: 500px; margin-bottom: 15px; padding: 15px 20px; border-radius: 16px; background: linear-gradient(135deg, rgba(247,151,30,0.25), rgba(255,210,0,0.15)); border: 2px solid #ffd200; text-align: center; box-shadow: 0 4px 25px rgba(255,210,0,0.25);">
+    <div style="font-size: 0.85rem; color: #ffd200; font-weight: bold; text-transform: uppercase; letter-spacing: 1.5px;">👑 SỐ ADMIN VỪA QUAY GẦN NHẤT</div>
+    <div style="font-size: 3.5rem; font-weight: 900; color: #fff; text-shadow: 0 0 20px rgba(255,210,0,0.6); margin: 2px 0;" id="banner-spin-number">--</div>
+    <div style="font-size: 0.95rem; color: #ddd;" id="banner-spin-info"></div>
+  </div>
+
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('user')">👤 Người chơi</button>
     <button class="tab-btn" onclick="switchTab('admin')">🔐 Admin</button>
@@ -370,6 +377,26 @@
 
   <div class="toast" id="toast"></div>
 
+  <!-- LIVE ADMIN SPIN OVERLAY (MỌI NGƯỜI CÙNG XEM QUAY) -->
+  <div id="live-spin-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,8,30,0.95); backdrop-filter:blur(12px); z-index:99999; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px;">
+    <div style="font-size: 1.4rem; color: #ffd200; font-weight: 900; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 2px;" id="live-spin-title">
+      🎰 ADMIN ĐANG QUAY SỐ...
+    </div>
+    <div style="font-size: 0.95rem; color: #aaa; margin-bottom: 25px;" id="live-spin-subtitle">
+      Hãy nín thở chờ kết quả trúng thưởng!
+    </div>
+    
+    <div style="width: 220px; height: 200px; background: rgba(255,210,0,0.1); border: 3px solid #ffd200; border-radius: 25px; display:flex; align-items:center; justify-content:center; box-shadow: 0 0 60px rgba(255,210,0,0.4); margin-bottom: 25px;">
+      <div id="live-spin-number" style="font-size: 6.5rem; font-weight: 900; background: linear-gradient(135deg, #f7971e, #ffd200); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;">
+        ?
+      </div>
+    </div>
+
+    <div id="live-spin-winner" style="font-size: 1.25rem; font-weight: bold; color: #fff; min-height: 45px; margin-bottom: 20px;"></div>
+
+    <button class="btn btn-secondary" style="width:auto; padding: 12px 35px; font-size: 1rem; display:none;" id="live-spin-close" onclick="closeLiveSpinOverlay()">Đóng</button>
+  </div>
+
   <script>
     // ===== TAB SWITCHING =====
     function switchTab(tab) {
@@ -392,8 +419,12 @@
     let currentIsLocked = false;
     let currentIsExpired = false;
     let hasUserPicked = false;
+    let seenSpinId = null;
+    let isFirstLoad = true;
+    let isSpinningLive = false;
+    let cachedHistory = [];
 
-    // ===== LOAD RANGE & DEADLINE =====
+    // ===== LOAD RANGE & DEADLINE & LIVE SPIN =====
     async function loadRange() {
       const res = await fetch('/api/range');
       const data = await res.json();
@@ -411,6 +442,101 @@
 
       updateLockBtnUI();
       updateDeadlineUI();
+
+      // Handle Latest Admin Spin
+      if (data.latestAdminSpin) {
+        updateLatestSpinBanner(data.latestAdminSpin.number);
+
+        // Check if there is a NEW spin to watch
+        if (data.latestAdminSpin.id !== seenSpinId) {
+          const spinAge = Date.now() - data.latestAdminSpin.startedAt;
+          seenSpinId = data.latestAdminSpin.id;
+
+          // If spin happened recently (< 12 seconds ago) and not currently spinning
+          if (!isFirstLoad && spinAge < 12000 && !isSpinningLive) {
+            triggerLiveSpinWatching(data.latestAdminSpin.number);
+          }
+        }
+      } else {
+        document.getElementById('latest-spin-banner').style.display = 'none';
+      }
+
+      isFirstLoad = false;
+    }
+
+    // ===== LATEST SPIN TOP BANNER =====
+    function updateLatestSpinBanner(num) {
+      const banner = document.getElementById('latest-spin-banner');
+      banner.style.display = 'block';
+      document.getElementById('banner-spin-number').textContent = num;
+      
+      const winners = cachedHistory
+        .filter(h => h.number === num && h.pickedBy !== 'Admin')
+        .map(h => h.pickedBy);
+
+      const infoEl = document.getElementById('banner-spin-info');
+      if (winners.length > 0) {
+        infoEl.innerHTML = `🎉 Người trúng giải: <b style="color:#2ecc71;">${winners.join(', ')}</b>`;
+      } else {
+        infoEl.innerHTML = `Chưa có người chơi nào chọn số này`;
+      }
+    }
+
+    // ===== TRIGGER LIVE SPIN WATCHING OVERLAY =====
+    function triggerLiveSpinWatching(finalNumber) {
+      isSpinningLive = true;
+      const overlay = document.getElementById('live-spin-overlay');
+      const title = document.getElementById('live-spin-title');
+      const subtitle = document.getElementById('live-spin-subtitle');
+      const numEl = document.getElementById('live-spin-number');
+      const winnerEl = document.getElementById('live-spin-winner');
+      const closeBtn = document.getElementById('live-spin-close');
+
+      overlay.style.display = 'flex';
+      title.textContent = '🎰 ADMIN ĐANG QUAY SỐ...';
+      title.style.color = '#ffd200';
+      subtitle.textContent = 'Hãy nín thở chờ kết quả trúng thưởng!';
+      winnerEl.innerHTML = '';
+      closeBtn.style.display = 'none';
+
+      const min = parseInt(document.getElementById('user-min').textContent) || 1;
+      const max = parseInt(document.getElementById('user-max').textContent) || 100;
+
+      let counter = 0;
+      const rollInterval = setInterval(() => {
+        numEl.textContent = Math.floor(Math.random() * (max - min + 1)) + min;
+        counter++;
+        if (counter > 35) { // ~3.5 seconds
+          clearInterval(rollInterval);
+          numEl.textContent = finalNumber;
+          numEl.style.transform = 'scale(1.25)';
+          numEl.style.transition = 'transform 0.3s ease';
+          setTimeout(() => { numEl.style.transform = 'scale(1)'; }, 300);
+
+          title.textContent = '🎉 KẾT QUẢ QUAY THƯỞNG 🎉';
+          title.style.color = '#2ecc71';
+          subtitle.textContent = `Số may mắn hôm nay là ${finalNumber}`;
+
+          // Find winners
+          const winners = cachedHistory
+            .filter(h => h.number === finalNumber && h.pickedBy !== 'Admin')
+            .map(h => h.pickedBy);
+
+          if (winners.length > 0) {
+            winnerEl.innerHTML = `🏆 Chúc mừng: <span style="color:#ffd200; font-size:1.4rem;">${winners.join(', ')}</span> đã trúng giải! 🎊`;
+          } else {
+            winnerEl.innerHTML = `Rất tiếc, chưa có ai chọn trúng số ${finalNumber}!`;
+          }
+
+          closeBtn.style.display = 'inline-block';
+          isSpinningLive = false;
+          updateLatestSpinBanner(finalNumber);
+        }
+      }, 90);
+    }
+
+    function closeLiveSpinOverlay() {
+      document.getElementById('live-spin-overlay').style.display = 'none';
     }
 
     // ===== UPDATE DEADLINE & COUNTDOWN UI =====
@@ -507,6 +633,7 @@
     async function loadHistory() {
       const res = await fetch('/api/history');
       const data = await res.json();
+      cachedHistory = data || [];
       const list = document.getElementById('history-list');
       if (data.length === 0) {
         list.innerHTML = '<div class="history-item" style="text-align:center;color:#777;">Chưa có lượt chọn nào</div>';
@@ -670,10 +797,9 @@
         return;
       }
 
-      animateResult('admin-result', 'admin-result-num', data.number, () => {
-        showToast(`Admin random ra số ${data.number}!`);
-        loadHistory();
-      });
+      seenSpinId = data.latestAdminSpin ? data.latestAdminSpin.id : Date.now();
+      triggerLiveSpinWatching(data.number);
+      loadHistory();
     }
 
     // ===== ADMIN: DEADLINE & LOCK =====
@@ -772,8 +898,8 @@
     loadHistory();
     // Smooth countdown every 1s
     setInterval(() => { updateDeadlineUI(); }, 1000);
-    // Auto refresh data every 5s
-    setInterval(() => { loadRange(); loadHistory(); }, 5000);
+    // Fast poll for live updates (1.5s)
+    setInterval(() => { loadRange(); loadHistory(); }, 1500);
   </script>
 </body>
 </html>
