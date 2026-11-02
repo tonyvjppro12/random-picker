@@ -30,11 +30,42 @@ let state = {
   adminPassword: 'admin123', // Change this!
   history: [],               // { number, pickedBy, timestamp }
   pickedNames: new Set(),    // track names that already picked
+  deadline: null,            // ISO string e.g. "2026-11-02T20:30"
+  isLocked: false,           // boolean manual lock
 };
 
-// Get current range (public)
+function checkIsExpired() {
+  if (state.isLocked) return true;
+  if (state.deadline && new Date() > new Date(state.deadline)) return true;
+  return false;
+}
+
+// Get current range and status (public)
 app.get('/api/range', (req, res) => {
-  res.json({ min: state.min, max: state.max });
+  res.json({
+    min: state.min,
+    max: state.max,
+    deadline: state.deadline,
+    isLocked: state.isLocked,
+    isExpired: checkIsExpired(),
+    serverTime: new Date().toISOString()
+  });
+});
+
+// Admin: set deadline or lock
+app.post('/api/admin/deadline', (req, res) => {
+  const { password, deadline, isLocked } = req.body;
+  if (password !== state.adminPassword) {
+    return res.status(403).json({ error: 'Sai mật khẩu admin!' });
+  }
+  if (deadline !== undefined) state.deadline = deadline ? new Date(deadline).toISOString() : null;
+  if (isLocked !== undefined) state.isLocked = !!isLocked;
+  res.json({
+    success: true,
+    deadline: state.deadline,
+    isLocked: state.isLocked,
+    isExpired: checkIsExpired()
+  });
 });
 
 // Admin: update range
@@ -53,6 +84,17 @@ app.post('/api/admin/range', (req, res) => {
   res.json({ success: true, min: state.min, max: state.max });
 });
 
+// Admin: reset history and picked names
+app.post('/api/admin/reset', (req, res) => {
+  const { password } = req.body;
+  if (password !== state.adminPassword) {
+    return res.status(403).json({ error: 'Sai mật khẩu admin!' });
+  }
+  state.history = [];
+  state.pickedNames.clear();
+  res.json({ success: true, message: 'Đã xóa toàn bộ lịch sử! Mọi người có thể chọn lại.' });
+});
+
 // Admin: random a number
 app.post('/api/admin/random', (req, res) => {
   const { password } = req.body;
@@ -66,6 +108,9 @@ app.post('/api/admin/random', (req, res) => {
 
 // User: pick a specific number
 app.post('/api/pick', (req, res) => {
+  if (checkIsExpired()) {
+    return res.status(400).json({ error: '⛔ Đã hết thời gian chọn số!' });
+  }
   const { number, name } = req.body;
   const playerName = (name || '').trim();
   if (!playerName) {
@@ -84,6 +129,9 @@ app.post('/api/pick', (req, res) => {
 
 // User: random a number within range
 app.post('/api/random', (req, res) => {
+  if (checkIsExpired()) {
+    return res.status(400).json({ error: '⛔ Đã hết thời gian chọn số!' });
+  }
   const { name } = req.body;
   const playerName = (name || '').trim();
   if (!playerName) {

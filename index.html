@@ -286,6 +286,9 @@
       <div class="range-numbers"><span id="user-min">1</span> — <span id="user-max">100</span></div>
     </div>
 
+    <!-- DEADLINE BANNER -->
+    <div id="deadline-banner" style="display:none; margin-bottom: 20px; padding: 12px 15px; border-radius: 12px; text-align: center; font-size: 0.95rem; font-weight: bold;"></div>
+
     <div class="form-group">
       <label>Tên của bạn <span style="color:#e74c3c">*</span></label>
       <input type="text" id="user-name" placeholder="Bắt buộc nhập tên..." required>
@@ -329,7 +332,21 @@
 
     <button class="btn btn-primary" onclick="adminSetRange()">📏 Cập nhật phạm vi</button>
 
-    <div class="or-divider">— hoặc —</div>
+    <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+
+    <div class="form-group">
+      <label>⏰ Hạn chót chọn số (mấy giờ thì đóng)</label>
+      <input type="datetime-local" id="admin-deadline" style="color-scheme: dark;">
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+      <button class="btn" style="flex: 2; background: linear-gradient(135deg, #3498db, #2980b9); color: #fff; margin-top: 0;" onclick="adminSetDeadline()">⏱️ Lưu hạn chót</button>
+      <button class="btn" style="flex: 1; background: rgba(255,255,255,0.15); color: #ccc; margin-top: 0;" onclick="adminClearDeadline()">Xóa giờ</button>
+    </div>
+
+    <button class="btn" id="btn-toggle-lock" style="background: linear-gradient(135deg, #e67e22, #d35400); color: #fff; margin-top: 10px;" onclick="adminToggleLock()">🔒 Đóng cổng ngay bây giờ</button>
+
+    <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
 
     <button class="btn btn-secondary" onclick="adminRandom()">🎰 Admin Random</button>
 
@@ -337,6 +354,10 @@
       <div class="result-number" id="admin-result-num">0</div>
       <div class="result-label">Kết quả Admin</div>
     </div>
+
+    <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 25px 0 15px;">
+
+    <button class="btn" style="background: linear-gradient(135deg, #e74c3c, #c0392b); color: #fff;" onclick="adminResetHistory()">🗑️ Xóa toàn bộ lịch sử & lượt đã chọn</button>
   </div>
 
   <!-- HISTORY -->
@@ -367,7 +388,12 @@
       setTimeout(() => { t.className = 'toast'; }, 3000);
     }
 
-    // ===== LOAD RANGE =====
+    let currentDeadline = null;
+    let currentIsLocked = false;
+    let currentIsExpired = false;
+    let hasUserPicked = false;
+
+    // ===== LOAD RANGE & DEADLINE =====
     async function loadRange() {
       const res = await fetch('/api/range');
       const data = await res.json();
@@ -378,6 +404,103 @@
       document.getElementById('user-number').min = data.min;
       document.getElementById('user-number').max = data.max;
       document.getElementById('user-number').placeholder = `Nhập số từ ${data.min} đến ${data.max}`;
+
+      currentDeadline = data.deadline ? new Date(data.deadline) : null;
+      currentIsLocked = !!data.isLocked;
+      currentIsExpired = !!data.isExpired;
+
+      updateLockBtnUI();
+      updateDeadlineUI();
+    }
+
+    // ===== UPDATE DEADLINE & COUNTDOWN UI =====
+    function updateDeadlineUI() {
+      const banner = document.getElementById('deadline-banner');
+      const now = new Date();
+
+      if (currentIsLocked) {
+        banner.style.display = 'block';
+        banner.style.background = 'rgba(231, 76, 60, 0.2)';
+        banner.style.border = '1px solid rgba(231, 76, 60, 0.5)';
+        banner.style.color = '#e74c3c';
+        banner.innerHTML = '🔒 Admin đã đóng cổng chọn số!';
+        if (!hasUserPicked) lockControlsBecauseExpired('🔒 Cổng đã đóng');
+        return;
+      }
+
+      if (currentDeadline) {
+        const diffMs = currentDeadline - now;
+        const timeStr = currentDeadline.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+
+        if (diffMs <= 0) {
+          currentIsExpired = true;
+          banner.style.display = 'block';
+          banner.style.background = 'rgba(231, 76, 60, 0.2)';
+          banner.style.border = '1px solid rgba(231, 76, 60, 0.5)';
+          banner.style.color = '#e74c3c';
+          banner.innerHTML = `⛔ ĐÃ HẾT GIỜ CHỌN SỐ! (Hạn chót: ${timeStr})`;
+          if (!hasUserPicked) lockControlsBecauseExpired('⛔ Đã hết giờ');
+        } else {
+          currentIsExpired = false;
+          const totalSec = Math.floor(diffMs / 1000);
+          const hrs = Math.floor(totalSec / 3600);
+          const mins = Math.floor((totalSec % 3600) / 60);
+          const secs = totalSec % 60;
+          let remainStr = '';
+          if (hrs > 0) remainStr += `${hrs} giờ `;
+          remainStr += `${mins} phút ${secs} giây`;
+
+          banner.style.display = 'block';
+          banner.style.background = 'rgba(241, 196, 15, 0.15)';
+          banner.style.border = '1px solid rgba(241, 196, 15, 0.4)';
+          banner.style.color = '#ffd200';
+          banner.innerHTML = `⏳ Hạn chót: <b>${timeStr}</b> (Còn lại: <span style="color:#2ecc71">${remainStr}</span>)`;
+
+          if (!hasUserPicked) {
+            unlockControlsIfExpired();
+          }
+        }
+      } else {
+        banner.style.display = 'none';
+        if (!hasUserPicked) {
+          unlockControlsIfExpired();
+        }
+      }
+    }
+
+    function lockControlsBecauseExpired(text) {
+      document.getElementById('btn-pick').disabled = true;
+      document.getElementById('btn-random').disabled = true;
+      document.getElementById('btn-pick').textContent = text;
+      document.getElementById('btn-random').textContent = text;
+      document.getElementById('btn-pick').style.opacity = '0.5';
+      document.getElementById('btn-random').style.opacity = '0.5';
+      document.getElementById('btn-pick').style.cursor = 'not-allowed';
+      document.getElementById('btn-random').style.cursor = 'not-allowed';
+    }
+
+    function unlockControlsIfExpired() {
+      if (document.getElementById('btn-pick').textContent.includes('🔒') || document.getElementById('btn-pick').textContent.includes('⛔')) {
+        document.getElementById('btn-pick').disabled = false;
+        document.getElementById('btn-random').disabled = false;
+        document.getElementById('btn-pick').textContent = '✅ Chọn số này';
+        document.getElementById('btn-random').textContent = '🎰 Random ngẫu nhiên';
+        document.getElementById('btn-pick').style.opacity = '1';
+        document.getElementById('btn-random').style.opacity = '1';
+        document.getElementById('btn-pick').style.cursor = 'pointer';
+        document.getElementById('btn-random').style.cursor = 'pointer';
+      }
+    }
+
+    function updateLockBtnUI() {
+      const btn = document.getElementById('btn-toggle-lock');
+      if (currentIsLocked) {
+        btn.textContent = '🔓 Mở lại cổng chọn số';
+        btn.style.background = 'linear-gradient(135deg, #27ae60, #2ecc71)';
+      } else {
+        btn.textContent = '🔒 Đóng cổng ngay bây giờ';
+        btn.style.background = 'linear-gradient(135deg, #e67e22, #d35400)';
+      }
     }
 
     // ===== LOAD HISTORY =====
@@ -491,6 +614,7 @@
 
     // ===== LOCK CONTROLS AFTER PICK =====
     function lockUserControls(name) {
+      hasUserPicked = true;
       document.getElementById('btn-pick').disabled = true;
       document.getElementById('btn-random').disabled = true;
       document.getElementById('user-name').disabled = true;
@@ -552,10 +676,103 @@
       });
     }
 
+    // ===== ADMIN: DEADLINE & LOCK =====
+    async function adminSetDeadline() {
+      const password = document.getElementById('admin-pass').value;
+      const deadlineVal = document.getElementById('admin-deadline').value;
+      if (!password) { showToast('Nhập mật khẩu admin!', 'error'); return; }
+      if (!deadlineVal) { showToast('Vui lòng chọn ngày giờ kết thúc!', 'error'); return; }
+
+      const res = await fetch('/api/admin/deadline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, deadline: deadlineVal })
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error, 'error'); return; }
+      showToast('Đã lưu hạn chót thành công!');
+      loadRange();
+    }
+
+    async function adminClearDeadline() {
+      const password = document.getElementById('admin-pass').value;
+      if (!password) { showToast('Nhập mật khẩu admin!', 'error'); return; }
+
+      const res = await fetch('/api/admin/deadline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, deadline: null })
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error, 'error'); return; }
+      document.getElementById('admin-deadline').value = '';
+      showToast('Đã xóa hạn chót!');
+      loadRange();
+    }
+
+    async function adminToggleLock() {
+      const password = document.getElementById('admin-pass').value;
+      if (!password) { showToast('Nhập mật khẩu admin!', 'error'); return; }
+
+      const nextLockState = !currentIsLocked;
+      const res = await fetch('/api/admin/deadline', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, isLocked: nextLockState })
+      });
+      const data = await res.json();
+      if (!res.ok) { showToast(data.error, 'error'); return; }
+      showToast(nextLockState ? 'Đã khóa cổng chọn số!' : 'Đã mở lại cổng chọn số!');
+      loadRange();
+    }
+
+    // ===== ADMIN: RESET HISTORY =====
+    async function adminResetHistory() {
+      const password = document.getElementById('admin-pass').value;
+      if (!password) { showToast('Nhập mật khẩu admin!', 'error'); return; }
+
+      if (!confirm('Bạn có chắc chắn muốn xóa toàn bộ lịch sử và cho phép mọi người chọn lại từ đầu?')) {
+        return;
+      }
+
+      const res = await fetch('/api/admin/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.error, 'error');
+        return;
+      }
+
+      showToast(data.message || 'Đã xóa lịch sử!');
+      unlockUserControls();
+      loadHistory();
+    }
+
+    function unlockUserControls() {
+      hasUserPicked = false;
+      document.getElementById('btn-pick').disabled = false;
+      document.getElementById('btn-random').disabled = false;
+      document.getElementById('user-name').disabled = false;
+      document.getElementById('user-number').disabled = false;
+      document.getElementById('btn-pick').textContent = '✅ Chọn số này';
+      document.getElementById('btn-random').textContent = '🎰 Random ngẫu nhiên';
+      document.getElementById('btn-pick').style.opacity = '1';
+      document.getElementById('btn-random').style.opacity = '1';
+      document.getElementById('btn-pick').style.cursor = 'pointer';
+      document.getElementById('btn-random').style.cursor = 'pointer';
+      document.getElementById('user-result').classList.remove('show');
+    }
+
     // ===== INIT =====
     loadRange();
     loadHistory();
-    // Auto refresh every 5s
+    // Smooth countdown every 1s
+    setInterval(() => { updateDeadlineUI(); }, 1000);
+    // Auto refresh data every 5s
     setInterval(() => { loadRange(); loadHistory(); }, 5000);
   </script>
 </body>
