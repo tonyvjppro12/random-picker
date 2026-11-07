@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🎲 4 Color Dice Remote Control</title>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="mqtt.min.js"></script>
+<script>
+if(typeof mqtt === 'undefined'){
+  document.write('<script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"><\/script>');
+}
+</script>
+<script src="sync-service.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Open Sans',sans-serif;background:#10131d;color:#eee;min-height:100vh;padding:12px;display:flex;flex-direction:column;gap:12px}
+
+.header{text-align:center;padding:4px 0}
+.header h1{font-size:17px;color:#fff;display:flex;align-items:center;justify-content:center;gap:6px}
+.header .subtitle{font-size:11.5px;color:#888;margin-top:2px}
+.status-pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;margin-top:4px;padding:4px 12px;border-radius:20px;background:rgba(255,255,255,.08);font-weight:600}
+.status-pill .dot{width:8px;height:8px;border-radius:50%;background:#ff7f00}
+.status-pill.connected .dot{background:#28a745;box-shadow:0 0 8px #28a745}
+.status-pill.error .dot{background:#e74c3c}
+
+.btn-roll-remote{width:100%;padding:15px;border:none;border-radius:12px;font-size:19px;font-weight:700;cursor:pointer;font-family:inherit;color:#fff;background:linear-gradient(135deg,#28a745,#20c997);box-shadow:0 4px 16px rgba(40,167,69,.4);transition:all .15s}
+.btn-roll-remote:active{transform:scale(.97);filter:brightness(.9)}
+
+.card{background:#181c2b;border-radius:12px;padding:13px;border:1px solid rgba(255,255,255,.08);box-shadow:0 3px 10px rgba(0,0,0,.25)}
+.card h3{font-size:13.5px;color:#3898ec;margin-bottom:9px;display:flex;align-items:center;justify-content:space-between}
+
+label{display:block;font-size:11px;color:#aaa;margin-bottom:3px;font-weight:600}
+select,input[type=text]{width:100%;padding:8px 10px;border:1px solid rgba(255,255,255,.15);border-radius:8px;background:#0d101a;color:#fff;font-family:inherit;font-size:13px;margin-bottom:6px}
+
+/* ===== GIAO DIỆN ĐỔI MÀU SIÊU TỐC (MỚI) ===== */
+.combo-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:10px}
+.combo-btn{padding:7px 4px;border:1px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(255,255,255,.05);color:#ccc;font-size:11px;font-weight:600;cursor:pointer;text-align:center;font-family:inherit;transition:all .15s}
+.combo-btn:active{transform:scale(.95);background:rgba(255,255,255,.15);color:#fff}
+
+.face-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.face-tab{display:flex;align-items:center;justify-content:center;gap:6px;padding:8px 4px;background:#0d101a;border:2px solid rgba(255,255,255,.1);border-radius:10px;cursor:pointer;transition:all .15s;font-family:inherit;color:#fff}
+.face-tab.active{border-color:#3898ec;background:rgba(56,152,236,.22);box-shadow:0 0 10px rgba(56,152,236,.4)}
+.face-tab .dice-pip{font-size:24px;line-height:1;transition:color .2s;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+.face-tab .face-name{font-size:11px;font-weight:700}
+.face-tab-all{grid-column:span 3;padding:7px;background:rgba(255,255,255,.06);font-size:11.5px}
+
+.color-palette-bar{background:#0d101a;border-radius:10px;padding:10px;border:1px solid rgba(255,255,255,.08)}
+.current-selection-info{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:#aaa;margin-bottom:8px}
+.current-selection-info b{color:#3898ec}
+
+.swatch-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:7px}
+.swatch-btn{aspect-ratio:1;border-radius:50%;border:2px solid rgba(255,255,255,.25);cursor:pointer;transition:transform .12s;box-shadow:0 2px 4px rgba(0,0,0,.4);position:relative}
+.swatch-btn:active{transform:scale(1.25)}
+
+.auto-advance-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:#aaa;margin-top:8px}
+.auto-advance-toggle input{width:16px;height:16px;accent-color:#3898ec;margin:0}
+
+/* Tùy chỉnh màu chi tiết */
+.custom-hex-box{display:none;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(255,255,255,.1)}
+.custom-hex-box.show{display:flex;gap:6px;align-items:center}
+.btn-toggle-custom{background:none;border:none;color:#888;font-size:10.5px;cursor:pointer;text-decoration:underline;margin-top:6px;display:inline-block}
+
+/* Speed presets */
+.speed-presets{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.speed-btn{padding:7px 3px;border:2px solid rgba(255,255,255,.12);border-radius:8px;background:rgba(255,255,255,.05);color:#ccc;font-size:11px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;font-family:inherit;line-height:1.2}
+.speed-btn:active{transform:scale(.95)}
+.speed-btn.active{border-color:#28a745;background:rgba(40,167,69,.25);color:#fff}
+
+.theme-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.theme-btn{padding:7px 3px;border:2px solid transparent;border-radius:8px;font-size:11px;cursor:pointer;font-family:inherit;color:#fff;text-align:center;transition:all .15s;font-weight:600}
+.theme-btn:active{transform:scale(.95)}
+.theme-btn.active{border-color:#fff;box-shadow:0 0 10px rgba(255,255,255,.4)}
+
+.mode-toggle{display:flex;gap:6px;margin-bottom:6px}
+.mode-btn{flex:1;padding:8px;border:2px solid rgba(255,255,255,.15);border-radius:8px;background:rgba(255,255,255,.05);color:#ccc;font-size:12px;font-weight:600;cursor:pointer;text-align:center;transition:all .15s;font-family:inherit}
+.mode-btn.active{border-color:#1e73be;background:rgba(30,115,190,.25);color:#fff}
+
+.sound-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:#aaa;margin-top:4px}
+.sound-toggle input{width:16px;height:16px;accent-color:#1e73be}
+
+.pin-gate{text-align:center;padding:40px 16px}
+.pin-gate h2{font-size:20px;margin-bottom:14px}
+.pin-gate input{text-align:center;letter-spacing:10px;font-size:26px;max-width:180px;background:#0d101a;border:2px solid rgba(255,255,255,.18);border-radius:10px;color:#fff;padding:10px;margin-bottom:12px;width:100%}
+.pin-gate .btn-unlock{padding:12px 36px;background:#1e73be;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit}
+.pin-error{color:#e74c3c;font-size:13px;margin-top:8px;display:none}
+
+.room-bar{display:flex;gap:6px;align-items:center}
+.room-bar input{margin-bottom:0;flex:1}
+.room-bar button{padding:7px 12px;background:#1e73be;border:none;border-radius:8px;color:#fff;font-weight:600;font-size:11.5px;cursor:pointer;font-family:inherit}
+</style>
+</head>
+<body>
+
+<!-- PIN GATE -->
+<div id="pinGate" class="pin-gate">
+  <h2>🔒 Remote Control</h2>
+  <p style="font-size:13px;color:#888;margin-bottom:14px">Nhập PIN để mở điều khiển bí mật</p>
+  <input type="password" id="pinInput" maxlength="4" placeholder="••••" autofocus>
+  <br>
+  <button class="btn-unlock" id="btnPin">Unlock</button>
+  <div class="pin-error" id="pinError">❌ Sai PIN</div>
+</div>
+
+<!-- MAIN REMOTE (hidden until PIN) -->
+<div id="mainRemote" style="display:none">
+
+  <div class="header">
+    <h1>🎲 Dice Remote Control</h1>
+    <div class="status-pill" id="statusPill"><span class="dot"></span> <span id="statusText">Đang kết nối Cloud...</span></div>
+  </div>
+
+  <!-- ROLL BUTTON LUÔN Ở ĐẦU -->
+  <button class="btn-roll-remote" id="btnRollRemote">🎲 ROLL TRÊN MÁY TÍNH !</button>
+
+  <!-- CARD ĐỔI MÀU SIÊU TỐC 1 CHẠM -->
+  <div class="card">
+    <h3>
+      <span>🖌️ Đổi màu 6 mặt (1 chạm)</span>
+      <span style="font-size:10px;color:#888;font-weight:400">Không cần mở bảng màu</span>
+    </h3>
+
+    <!-- 1-TAP PRESET COMBOS -->
+    <div class="combo-presets">
+      <button class="combo-btn" onclick="applyColorCombo('casino')">🎲 Casino</button>
+      <button class="combo-btn" onclick="applyColorCombo('rainbow')">🌈 Cầu vồng</button>
+      <button class="combo-btn" onclick="applyColorCombo('allRed')">🔴 Toàn Đỏ</button>
+      <button class="combo-btn" onclick="applyColorCombo('allBlack')">⚫ Toàn Đen</button>
+      <button class="combo-btn" onclick="applyColorCombo('allBlue')">🔵 Toàn Xanh</button>
+      <button class="combo-btn" onclick="applyColorCombo('allWhite')">⚪ Toàn Trắng</button>
+    </div>
+
+    <!-- 6 TABS CHỌN MẶT XÚC XẮC -->
+    <div class="face-tabs" id="faceTabs"></div>
+
+    <!-- BẢNG MÀU CHỌN NHANH (16 MÀU) -->
+    <div class="color-palette-bar">
+      <div class="current-selection-info">
+        <span>Đang đổi: <b id="currentFaceLabel">Mặt 1</b></span>
+        <span style="font-size:10.5px;color:#777">Chạm màu để đổi ngay ⚡</span>
+      </div>
+      <div class="swatch-grid" id="swatchGrid"></div>
+
+      <!-- Tự động nhảy sang mặt kế tiếp -->
+      <label class="auto-advance-toggle">
+        <input type="checkbox" id="autoAdvanceCheck" checked>
+        <span>⚡ Tự động chuyển sang mặt tiếp theo khi chọn</span>
+      </label>
+
+      <!-- Tùy chỉnh màu mã Hex nếu muốn -->
+      <div>
+        <button class="btn-toggle-custom" onclick="toggleCustomHexBox()">+ Nhập mã Hex hoặc tự pha màu</button>
+        <div class="custom-hex-box" id="customHexBox">
+          <input type="color" id="customColorPicker" style="width:40px;height:36px;padding:0;background:transparent;border:none;cursor:pointer">
+          <input type="text" id="customHexInput" placeholder="#ff0000" maxlength="7" style="flex:1;margin-bottom:0">
+          <button onclick="applyCustomHex()" style="padding:8px 12px;background:#3898ec;border:none;border-radius:8px;color:#fff;font-weight:600;font-size:11.5px;cursor:pointer">Lưu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPEED CONTROL -->
+  <div class="card">
+    <h3>⚡ Tốc độ lăn xúc xắc</h3>
+    <div class="speed-presets" id="speedPresets">
+      <button class="speed-btn" data-speed="0.4">⚡ 0.4s<br><span style="font-size:9.5px;opacity:.7">Cực nhanh</span></button>
+      <button class="speed-btn" data-speed="0.7">🚀 0.7s<br><span style="font-size:9.5px;opacity:.7">Nhanh</span></button>
+      <button class="speed-btn active" data-speed="1.0">⏱️ 1.0s<br><span style="font-size:9.5px;opacity:.7">Chuẩn</span></button>
+      <button class="speed-btn" data-speed="1.8">⏳ 1.8s<br><span style="font-size:9.5px;opacity:.7">Chậm</span></button>
+      <button class="speed-btn" data-speed="2.6">🎭 2.6s<br><span style="font-size:9.5px;opacity:.7">Hồi hộp</span></button>
+      <button class="speed-btn" data-speed="3.5">🐌 3.5s<br><span style="font-size:9.5px;opacity:.7">Rất chậm</span></button>
+    </div>
+    <div style="margin-top:8px;background:rgba(0,0,0,.25);padding:8px;border-radius:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#bbb;margin-bottom:4px">
+        <span>Kéo chỉnh chi tiết:</span>
+        <b id="speedDisplay" style="color:#28a745;font-size:12px">1.0 giây</b>
+      </div>
+      <input type="range" id="speedSlider" min="0.3" max="3.5" step="0.1" value="1.0" style="width:100%;accent-color:#28a745;cursor:pointer">
+    </div>
+  </div>
+
+  <!-- MODE & COUNT -->
+  <div class="card">
+    <h3>🎮 Chế độ & Số xúc xắc</h3>
+    <div class="mode-toggle">
+      <button class="mode-btn" data-mode="classic">🎲 6-sided Dice</button>
+      <button class="mode-btn active" data-mode="color">🎨 Color Dice</button>
+    </div>
+    <label>Số xúc xắc:</label>
+    <select id="rDiceCount">
+      <option value="1">1</option><option value="2">2</option><option value="3">3</option>
+      <option value="4" selected>4 (Chuẩn 4 Color Dice)</option><option value="5">5</option><option value="6">6</option>
+    </select>
+    <div class="sound-toggle">
+      <input type="checkbox" id="rSound" checked> <span>Bật tiếng roll trên máy live</span>
+    </div>
+  </div>
+
+  <!-- THEME -->
+  <div class="card">
+    <h3>🎨 Theme bàn xúc xắc</h3>
+    <div class="theme-grid" id="themeGrid"></div>
+  </div>
+
+  <!-- ROOM ID -->
+  <div class="card">
+    <h3>☁️ Mã phòng (Room ID)</h3>
+    <div class="room-bar">
+      <input type="text" id="rRoomId" placeholder="dice8888">
+      <button id="btnChangeRoom">Đổi phòng</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const OWNER_PIN = '8888';
+const PIPS = ['⚀','⚁','⚂','⚃','⚄','⚅'];
+const DEFAULT_FACE_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6'];
+
+/* 16 màu phổ biến chọn nhanh */
+const QUICK_PALETTE = [
+  '#e74c3c', // Đỏ tươi
+  '#c0392b', // Đỏ sẫm
+  '#e67e22', // Cam
+  '#f1c40f', // Vàng
+  '#2ecc71', // Xanh lá
+  '#27ae60', // Xanh lục đậm
+  '#1abc9c', // Xanh ngọc
+  '#3498db', // Xanh dương
+  '#2980b9', // Xanh biển
+  '#9b59b6', // Tím
+  '#e91e63', // Hồng cánh sen
+  '#111111', // Đen tuyền
+  '#555555', // Xám đậm
+  '#bdc3c7', // Xám sáng
+  '#ffffff', // Trắng
+  '#ffd700'  // Vàng kim
+];
+
+const THEMES = {
+  'Blue':       {g1:'#2980b9',g2:'#154360'},
+  'Sab-Blue':   {g1:'#5dade2',g2:'#1a5276'},
+  'Green':      {g1:'#27ae60',g2:'#0e3d20'},
+  'Sab-Green':  {g1:'#58d68d',g2:'#145a32'},
+  'Red':        {g1:'#e74c3c',g2:'#641e16'},
+  'Sab-Red':    {g1:'#ec7063',g2:'#78281f'},
+  'Pink':       {g1:'#e91e90',g2:'#6c1248'},
+  'B&W':        {g1:'#bdc3c7',g2:'#2c3e50'},
+  'Sab-Black':  {g1:'#555555',g2:'#111111'},
+  'Heaven':     {g1:'#87ceeb',g2:'#f0e68c'},
+  'Hell':       {g1:'#8b0000',g2:'#1a0000'},
+  'Underwater': {g1:'#006994',g2:'#00293d'},
+  'Bronze':     {g1:'#cd7f32',g2:'#4a2c0a'},
+  'Silver':     {g1:'#c0c0c0',g2:'#404040'},
+  'Gold':       {g1:'#ffd700',g2:'#6b4f00'}
+};
+
+let settings = {
+  theme: 'Blue',
+  diceCount: 4,          // 4 Color Dice mặc định
+  mode: 'color',         // Chế độ Color Dice mặc định
+  sound: 'on',
+  faceColors: [...DEFAULT_FACE_COLORS],
+  rollDuration: 1.0
+};
+
+let selectedFace = 0; // 0..5 hoặc 'all'
+
+/* ---- PIN UNLOCK ---- */
+document.getElementById('btnPin').onclick = checkPin;
+document.getElementById('pinInput').addEventListener('keydown', e => { if(e.key === 'Enter') checkPin(); });
+
+function checkPin(){
+  if(document.getElementById('pinInput').value === OWNER_PIN){
+    document.getElementById('pinGate').style.display = 'none';
+    const main = document.getElementById('mainRemote');
+    main.style.display = 'flex';
+    main.style.flexDirection = 'column';
+    main.style.gap = '10px';
+    initRemote();
+  } else {
+    document.getElementById('pinError').style.display = 'block';
+    document.getElementById('pinInput').value = '';
+    document.getElementById('pinInput').focus();
+  }
+}
+
+function initRemote(){
+  buildFaceTabs();
+  buildQuickPalette();
+  buildThemeGrid();
+  initSpeedControls();
+
+  const rRoom = document.getElementById('rRoomId');
+  if(rRoom && window.syncService){
+    rRoom.value = window.syncService.roomId;
+  }
+
+  // Khởi tạo Cloud Sync qua WebSocket
+  if(window.syncService){
+    window.syncService.init({
+      role: 'remote',
+      onStatus: (status, text)=>{
+        const pill = document.getElementById('statusPill');
+        const stText = document.getElementById('statusText');
+        if(pill && stText){
+          stText.textContent = text;
+          pill.className = 'status-pill ' + status;
+        }
+      },
+      onMessage: (action, payload)=>{
+        if(action === 'sync_state'){
+          if(payload.theme) settings.theme = payload.theme;
+          if(payload.diceCount) settings.diceCount = payload.diceCount;
+          if(payload.mode) settings.mode = payload.mode;
+          if(payload.sound) settings.sound = payload.sound;
+          if(payload.rollDuration) settings.rollDuration = parseFloat(payload.rollDuration) || 1.0;
+          if(payload.faceColors && Array.isArray(payload.faceColors)){
+            settings.faceColors = [...payload.faceColors];
+          }
+          applySettingsToUI();
+        }
+      }
+    });
+  }
+}
+
+/* =====================================================================
+   GIAO DIỆN ĐỔI MÀU 1 CHẠM SIÊU TỐC
+   ===================================================================== */
+function buildFaceTabs(){
+  const container = document.getElementById('faceTabs');
+  container.innerHTML = '';
+
+  for(let i = 0; i < 6; i++){
+    const tab = document.createElement('button');
+    tab.className = 'face-tab' + (selectedFace === i ? ' active' : '');
+    tab.onclick = ()=> selectFace(i);
+    tab.innerHTML = `
+      <span class="dice-pip" id="pipIcon${i}" style="color:${settings.faceColors[i]}">${PIPS[i]}</span>
+      <span class="face-name">Mặt ${i+1}</span>
+    `;
+    container.appendChild(tab);
+  }
+
+  // Nút chọn tất cả cả 6 mặt
+  const allTab = document.createElement('button');
+  allTab.className = 'face-tab face-tab-all' + (selectedFace === 'all' ? ' active' : '');
+  allTab.onclick = ()=> selectFace('all');
+  allTab.innerHTML = `🎯 <b>Đổi màu CẢ 6 MẶT cùng lúc</b>`;
+  container.appendChild(allTab);
+}
+
+function selectFace(faceIndex){
+  selectedFace = faceIndex;
+  document.querySelectorAll('.face-tab').forEach((tab, i)=>{
+    if(i === 6){
+      tab.classList.toggle('active', selectedFace === 'all');
+    } else {
+      tab.classList.toggle('active', selectedFace === i);
+    }
+  });
+
+  const label = document.getElementById('currentFaceLabel');
+  if(selectedFace === 'all'){
+    label.textContent = 'TẤT CẢ 6 MẶT';
+  } else {
+    label.textContent = `Mặt ${selectedFace + 1}`;
+  }
+}
+
+function buildQuickPalette(){
+  const grid = document.getElementById('swatchGrid');
+  grid.innerHTML = '';
+  QUICK_PALETTE.forEach(color => {
+    const btn = document.createElement('button');
+    btn.className = 'swatch-btn';
+    btn.style.backgroundColor = color;
+    btn.title = color;
+    btn.onclick = ()=> applyColor(color);
+    grid.appendChild(btn);
+  });
+}
+
+function applyColor(hex){
+  const autoAdvance = document.getElementById('autoAdvanceCheck').checked;
+
+  if(selectedFace === 'all'){
+    for(let i = 0; i < 6; i++){
+      settings.faceColors[i] = hex;
+      const pip = document.getElementById(`pipIcon${i}`);
+      if(pip) pip.style.color = hex;
+    }
+    if(window.syncService){
+      window.syncService.send('change_all_face_colors', { faceColors: [...settings.faceColors] });
+    }
+  } else {
+    const idx = selectedFace;
+    settings.faceColors[idx] = hex;
+    const pip = document.getElementById(`pipIcon${idx}`);
+    if(pip) pip.style.color = hex;
+
+    if(window.syncService){
+      window.syncService.send('change_face_color', { faceIndex: idx, color: hex });
+    }
+
+    // Tự động nhảy sang mặt kế tiếp (0 -> 1 -> 2 -> 3 -> 4 -> 5 -> 0)
+    if(autoAdvance){
+      selectFace((idx + 1) % 6);
+    }
+  }
+}
+
+/* Áp dụng nhanh bộ màu có sẵn */
+function applyColorCombo(comboType){
+  if(comboType === 'casino'){
+    // Mặt 1 Đỏ, Mặt 2-6 Đen tuyền
+    settings.faceColors = ['#e74c3c','#111111','#111111','#111111','#111111','#111111'];
+  } else if(comboType === 'rainbow'){
+    // Cầu vồng 6 màu
+    settings.faceColors = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#3498db','#9b59b6'];
+  } else if(comboType === 'allRed'){
+    settings.faceColors = ['#e74c3c','#e74c3c','#e74c3c','#e74c3c','#e74c3c','#e74c3c'];
+  } else if(comboType === 'allBlack'){
+    settings.faceColors = ['#111111','#111111','#111111','#111111','#111111','#111111'];
+  } else if(comboType === 'allBlue'){
+    settings.faceColors = ['#1e73be','#1e73be','#1e73be','#1e73be','#1e73be','#1e73be'];
+  } else if(comboType === 'allWhite'){
+    settings.faceColors = ['#ffffff','#ffffff','#ffffff','#ffffff','#ffffff','#ffffff'];
+  }
+
+  for(let i = 0; i < 6; i++){
+    const pip = document.getElementById(`pipIcon${i}`);
+    if(pip) pip.style.color = settings.faceColors[i];
+  }
+
+  if(window.syncService){
+    window.syncService.send('change_all_face_colors', { faceColors: [...settings.faceColors] });
+  }
+}
+
+function toggleCustomHexBox(){
+  const box = document.getElementById('customHexBox');
+  box.classList.toggle('show');
+}
+
+function applyCustomHex(){
+  const val = document.getElementById('customHexInput').value.trim() || document.getElementById('customColorPicker').value;
+  if(/^#[0-9a-fA-F]{6}$/.test(val)){
+    applyColor(val);
+  }
+}
+document.getElementById('customColorPicker').addEventListener('input', e=>{
+  document.getElementById('customHexInput').value = e.target.value;
+});
+
+/* ---- SPEED CONTROLS ---- */
+function initSpeedControls(){
+  const slider = document.getElementById('speedSlider');
+  const display = document.getElementById('speedDisplay');
+  const presetBtns = document.querySelectorAll('#speedPresets .speed-btn');
+
+  function setSpeed(val, updateSlider = true){
+    const num = Math.max(0.3, Math.min(3.5, parseFloat(val) || 1.0));
+    settings.rollDuration = num;
+    display.textContent = num.toFixed(1) + ' giây';
+    if(updateSlider) slider.value = num.toFixed(1);
+
+    presetBtns.forEach(b => {
+      const bSpeed = parseFloat(b.dataset.speed);
+      b.classList.toggle('active', Math.abs(bSpeed - num) < 0.05);
+    });
+
+    if(window.syncService){
+      window.syncService.send('change_roll_speed', { rollDuration: num });
+    }
+  }
+
+  presetBtns.forEach(btn => {
+    btn.addEventListener('click', ()=>{
+      setSpeed(btn.dataset.speed, true);
+    });
+  });
+
+  slider.addEventListener('input', e => {
+    display.textContent = parseFloat(e.target.value).toFixed(1) + ' giây';
+  });
+
+  slider.addEventListener('change', e => {
+    setSpeed(e.target.value, false);
+  });
+}
+
+/* ---- BUILD THEME GRID ---- */
+function buildThemeGrid(){
+  const grid = document.getElementById('themeGrid');
+  grid.innerHTML = '';
+  Object.entries(THEMES).forEach(([name, t])=>{
+    const btn = document.createElement('button');
+    btn.className = 'theme-btn' + (name === settings.theme ? ' active' : '');
+    btn.textContent = name;
+    btn.dataset.theme = name;
+    btn.style.background = `linear-gradient(135deg,${t.g1},${t.g2})`;
+    btn.onclick = ()=>{
+      settings.theme = name;
+      document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === name));
+      if(window.syncService){
+        window.syncService.send('change_theme', { theme: name });
+      }
+    };
+    grid.appendChild(btn);
+  });
+}
+
+function applySettingsToUI(){
+  document.querySelectorAll('.theme-btn').forEach(b => b.classList.toggle('active', b.dataset.theme === settings.theme));
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === settings.mode));
+  const diceCountEl = document.getElementById('rDiceCount');
+  if(diceCountEl) diceCountEl.value = settings.diceCount;
+  const soundEl = document.getElementById('rSound');
+  if(soundEl) soundEl.checked = (settings.sound === 'on');
+
+  // Update speed UI
+  const slider = document.getElementById('speedSlider');
+  const display = document.getElementById('speedDisplay');
+  const presetBtns = document.querySelectorAll('#speedPresets .speed-btn');
+  if(slider && display && settings.rollDuration){
+    const d = parseFloat(settings.rollDuration) || 1.0;
+    slider.value = d.toFixed(1);
+    display.textContent = d.toFixed(1) + ' giây';
+    presetBtns.forEach(b => {
+      const bSpeed = parseFloat(b.dataset.speed);
+      b.classList.toggle('active', Math.abs(bSpeed - d) < 0.05);
+    });
+  }
+
+  // Update Face colors
+  for(let i = 0; i < 6; i++){
+    const pip = document.getElementById(`pipIcon${i}`);
+    if(pip && settings.faceColors[i]) pip.style.color = settings.faceColors[i];
+  }
+}
+
+/* ---- MODE BUTTONS ---- */
+document.querySelectorAll('.mode-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    settings.mode = btn.dataset.mode;
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === settings.mode));
+    if(window.syncService){
+      window.syncService.send('change_mode', { mode: settings.mode });
+    }
+  });
+});
+
+/* ---- DICE COUNT ---- */
+document.getElementById('rDiceCount').addEventListener('change', e=>{
+  settings.diceCount = parseInt(e.target.value);
+  if(window.syncService){
+    window.syncService.send('change_dice_count', { diceCount: settings.diceCount });
+  }
+});
+
+/* ---- SOUND TOGGLE ---- */
+document.getElementById('rSound').addEventListener('change', e=>{
+  settings.sound = e.target.checked ? 'on' : 'off';
+  if(window.syncService){
+    window.syncService.send('change_sound', { sound: settings.sound });
+  }
+});
+
+/* ---- ROLL BUTTON ---- */
+document.getElementById('btnRollRemote').addEventListener('click', ()=>{
+  if(window.syncService){
+    window.syncService.send('roll', {
+      time: Date.now(),
+      rollDuration: settings.rollDuration
+    });
+  }
+});
+
+/* ---- CHANGE ROOM BUTTON ---- */
+document.getElementById('btnChangeRoom').addEventListener('click', ()=>{
+  const rRoom = document.getElementById('rRoomId').value.trim();
+  if(rRoom && window.syncService){
+    window.syncService.setRoomId(rRoom);
+  }
+});
+
+</script>
+</body>
+</html>
